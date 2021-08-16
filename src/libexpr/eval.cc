@@ -378,7 +378,10 @@ static Strings parseNixPath(const string & s)
 }
 
 
-EvalState::EvalState(const Strings & _searchPath, ref<Store> store)
+EvalState::EvalState(
+    const Strings & _searchPath,
+    ref<Store> store,
+    std::shared_ptr<Store> buildStore)
     : sWith(symbols.create("<with>"))
     , sOutPath(symbols.create("outPath"))
     , sDrvPath(symbols.create("drvPath"))
@@ -411,6 +414,7 @@ EvalState::EvalState(const Strings & _searchPath, ref<Store> store)
     , sEpsilon(symbols.create(""))
     , repair(NoRepair)
     , store(store)
+    , buildStore(buildStore ? buildStore : store)
     , regexCache(makeRegexCache())
     , baseEnv(allocEnv(128))
     , staticBaseEnv(false, 0)
@@ -776,18 +780,10 @@ inline Value * EvalState::lookupVar(Env * env, const ExprVar & var, bool noEval)
 }
 
 
-std::atomic<uint64_t> nrValuesFreed{0};
-
-void finalizeValue(void * obj, void * data)
-{
-    nrValuesFreed++;
-}
-
 Value * EvalState::allocValue()
 {
     nrValues++;
     auto v = (Value *) allocBytes(sizeof(Value));
-    //GC_register_finalizer_no_order(v, finalizeValue, nullptr, nullptr, nullptr);
     return v;
 }
 
@@ -854,39 +850,37 @@ Value * Expr::maybeThunk(EvalState & state, Env & env)
 }
 
 
-unsigned long nrAvoided = 0;
-
 Value * ExprVar::maybeThunk(EvalState & state, Env & env)
 {
     Value * v = state.lookupVar(&env, *this, true);
     /* The value might not be initialised in the environment yet.
        In that case, ignore it. */
-    if (v) { nrAvoided++; return v; }
+    if (v) { state.nrAvoided++; return v; }
     return Expr::maybeThunk(state, env);
 }
 
 
 Value * ExprString::maybeThunk(EvalState & state, Env & env)
 {
-    nrAvoided++;
+    state.nrAvoided++;
     return &v;
 }
 
 Value * ExprInt::maybeThunk(EvalState & state, Env & env)
 {
-    nrAvoided++;
+    state.nrAvoided++;
     return &v;
 }
 
 Value * ExprFloat::maybeThunk(EvalState & state, Env & env)
 {
-    nrAvoided++;
+    state.nrAvoided++;
     return &v;
 }
 
 Value * ExprPath::maybeThunk(EvalState & state, Env & env)
 {
-    nrAvoided++;
+    state.nrAvoided++;
     return &v;
 }
 
@@ -1141,8 +1135,6 @@ static string showAttrPath(EvalState & state, Env & env, const AttrPath & attrPa
 }
 
 
-unsigned long nrLookups = 0;
-
 void ExprSelect::eval(EvalState & state, Env & env, Value & v)
 {
     Value vTmp;
@@ -1154,7 +1146,7 @@ void ExprSelect::eval(EvalState & state, Env & env, Value & v)
     try {
 
         for (auto & i : attrPath) {
-            nrLookups++;
+            state.nrLookups++;
             Bindings::iterator j;
             Symbol name = getName(i, state, env);
             if (def) {

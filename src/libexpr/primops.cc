@@ -3109,7 +3109,7 @@ static RegisterPrimOp primop_toString({
 
         - A path (e.g., `toString /foo/bar` yields `"/foo/bar"`.
 
-        - A set containing `{ __toString = self: ...; }`.
+        - A set containing `{ __toString = self: ...; }` or `{ outPath = ...; }`.
 
         - An integer.
 
@@ -3645,9 +3645,7 @@ void EvalState::createBaseEnv()
     if (!evalSettings.pureEval) {
         mkInt(v, time(0));
         addConstant("__currentTime", v);
-    }
 
-    if (!evalSettings.pureEval) {
         mkString(v, settings.thisSystem.get());
         addConstant("__currentSystem", v);
     }

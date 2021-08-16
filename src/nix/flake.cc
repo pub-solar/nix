@@ -84,6 +84,7 @@ struct CmdFlakeUpdate : FlakeCommand
 
         lockFlags.recreateLockFile = true;
         lockFlags.writeLockFile = true;
+        lockFlags.applyNixConfig = true;
 
         lockFlake();
     }
@@ -114,6 +115,7 @@ struct CmdFlakeLock : FlakeCommand
         settings.tarballTtl = 0;
 
         lockFlags.writeLockFile = true;
+        lockFlags.applyNixConfig = true;
 
         lockFlake();
     }
@@ -270,6 +272,8 @@ struct CmdFlakeCheck : FlakeCommand
         settings.readOnlyMode = !build;
 
         auto state = getEvalState();
+
+        lockFlags.applyNixConfig = true;
         auto flake = lockFlake();
 
         bool hasErrors = false;
@@ -482,7 +486,7 @@ struct CmdFlakeCheck : FlakeCommand
                             }
                         }
 
-                        else if (name == "packages") {
+                        else if (name == "packages" || name == "devShells") {
                             state->forceAttrs(vOutput, pos);
                             for (auto & attr : *vOutput.attrs) {
                                 checkSystemName(attr.name, *attr.pos);
@@ -837,7 +841,7 @@ struct CmdFlakeArchive : FlakeCommand, MixJSON, MixDryRun
 
         if (!dryRun && !dstUri.empty()) {
             ref<Store> dstStore = dstUri.empty() ? openStore() : openStore(dstUri);
-            copyPaths(store, dstStore, sources);
+            copyPaths(*store, *dstStore, sources);
         }
     }
 };
@@ -910,6 +914,7 @@ struct CmdFlakeShow : FlakeCommand
                     logger->cout("%s: %s '%s'",
                         headerPrefix,
                         attrPath.size() == 2 && attrPath[0] == "devShell" ? "development environment" :
+                        attrPath.size() >= 2 && attrPath[0] == "devShells" ? "development environment" :
                         attrPath.size() == 3 && attrPath[0] == "checks" ? "derivation" :
                         attrPath.size() >= 1 && attrPath[0] == "hydraJobs" ? "derivation" :
                         "package",
@@ -928,6 +933,7 @@ struct CmdFlakeShow : FlakeCommand
                     || ((attrPath.size() == 1 || attrPath.size() == 2)
                         && (attrPath[0] == "checks"
                             || attrPath[0] == "packages"
+                            || attrPath[0] == "devShells"
                             || attrPath[0] == "apps"))
                     )
                 {
@@ -936,7 +942,7 @@ struct CmdFlakeShow : FlakeCommand
 
                 else if (
                     (attrPath.size() == 2 && (attrPath[0] == "defaultPackage" || attrPath[0] == "devShell"))
-                    || (attrPath.size() == 3 && (attrPath[0] == "checks" || attrPath[0] == "packages"))
+                    || (attrPath.size() == 3 && (attrPath[0] == "checks" || attrPath[0] == "packages" || attrPath[0] == "devShells"))
                     )
                 {
                     if (visitor.isDerivation())

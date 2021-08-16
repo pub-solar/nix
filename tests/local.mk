@@ -46,6 +46,7 @@ nix_tests = \
   flakes.sh \
   build.sh \
   compute-levels.sh \
+  repl.sh \
   ca/build.sh \
   ca/build-with-garbage-path.sh \
   ca/duplicate-realisation-in-closure.sh \
@@ -54,7 +55,9 @@ nix_tests = \
   ca/nix-shell.sh \
   ca/nix-run.sh \
   ca/recursive.sh \
-  ca/nix-copy.sh
+  ca/concurrent-builds.sh \
+  ca/nix-copy.sh \
+  eval-store.sh
   # parallel.sh
 
 install-tests += $(foreach x, $(nix_tests), tests/$(x))

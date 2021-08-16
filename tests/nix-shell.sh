@@ -54,6 +54,10 @@ nix-instantiate shell.nix -A shellDrv --add-root $TEST_ROOT/shell
 output=$(NIX_PATH=nixpkgs=shell.nix nix-shell --pure -p foo bar --run 'echo "$(foo) $(bar)"')
 [ "$output" = "foo bar" ]
 
+# Test nix-shell -p --arg x y
+output=$(NIX_PATH=nixpkgs=shell.nix nix-shell --pure -p foo --argstr fooContents baz --run 'echo "$(foo)"')
+[ "$output" = "baz" ]
+
 # Test nix-shell shebang mode
 sed -e "s|@ENV_PROG@|$(type -P env)|" shell.shebang.sh > $TEST_ROOT/shell.shebang.sh
 chmod a+rx $TEST_ROOT/shell.shebang.sh
@@ -96,5 +100,11 @@ echo foo | nix develop -f shell.nix shellDrv -c cat | grep -q foo
 nix_develop -f shell.nix shellDrv -c echo foo |& grep -q foo
 
 # Test 'nix print-dev-env'.
+[[ $(nix print-dev-env -f shell.nix shellDrv --json | jq -r .variables.arr1.value[2]) = '3 4' ]]
+
 source <(nix print-dev-env -f shell.nix shellDrv)
 [[ -n $stdenv ]]
+[[ ${arr1[2]} = "3 4" ]]
+[[ ${arr2[1]} = $'\n' ]]
+[[ ${arr2[2]} = $'x\ny' ]]
+[[ $(fun) = blabla ]]

@@ -82,13 +82,18 @@ void addURI(EvalState &state, fetchers::Attrs &attrs, Symbol name, std::string v
     attrs.emplace(name, n == "url" ? fixURI(v, state) : v);
 }
 
+struct FetchTreeParams {
+    bool emptyRevFallback = false;
+    bool allowNameArgument = false;
+};
+
 static void fetchTree(
     EvalState &state,
     const Pos &pos,
     Value **args,
     Value &v,
     const std::optional<std::string> type,
-    bool emptyRevFallback = false
+    const FetchTreeParams & params = FetchTreeParams{}
 ) {
     fetchers::Input input;
     PathSet context;
@@ -129,6 +134,14 @@ static void fetchTree(
                 .errPos = pos
             });
 
+        if (!params.allowNameArgument)
+            if (auto nameIter = attrs.find("name"); nameIter != attrs.end())
+                throw Error({
+                    .msg = hintfmt("attribute 'name' isn’t supported in call to 'fetchTree'"),
+                    .errPos = pos
+                });
+
+
         input = fetchers::Input::fromAttrs(std::move(attrs));
     } else {
         auto url = state.coerceToString(pos, *args[0], context, false, false);
@@ -154,13 +167,13 @@ static void fetchTree(
     if (state.allowedPaths)
         state.allowedPaths->insert(tree.actualPath);
 
-    emitTreeAttrs(state, tree, input2, v, emptyRevFallback);
+    emitTreeAttrs(state, tree, input2, v, params.emptyRevFallback);
 }
 
 static void prim_fetchTree(EvalState & state, const Pos & pos, Value * * args, Value & v)
 {
     settings.requireExperimentalFeature("flakes");
-    fetchTree(state, pos, args, v, std::nullopt);
+    fetchTree(state, pos, args, v, std::nullopt, FetchTreeParams { .allowNameArgument = false });
 }
 
 // FIXME: document
@@ -302,7 +315,7 @@ static RegisterPrimOp primop_fetchTarball({
 
 static void prim_fetchGit(EvalState &state, const Pos &pos, Value **args, Value &v)
 {
-    fetchTree(state, pos, args, v, "git", true);
+    fetchTree(state, pos, args, v, "git", FetchTreeParams { .emptyRevFallback = true, .allowNameArgument = true });
 }
 
 static RegisterPrimOp primop_fetchGit({

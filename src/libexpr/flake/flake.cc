@@ -1,4 +1,5 @@
 #include "flake.hh"
+#include "eval.hh"
 #include "lockfile.hh"
 #include "primops.hh"
 #include "eval-inline.hh"
@@ -296,7 +297,14 @@ LockedFlake lockFlake(
 
     FlakeCache flakeCache;
 
-    auto flake = getFlake(state, topRef, lockFlags.useRegistries, flakeCache);
+    auto useRegistries = lockFlags.useRegistries.value_or(settings.useRegistries);
+
+    auto flake = getFlake(state, topRef, useRegistries, flakeCache);
+
+    if (lockFlags.applyNixConfig) {
+        flake.config.apply();
+        // FIXME: send new config to the daemon.
+    }
 
     try {
 
@@ -478,7 +486,7 @@ LockedFlake lockFlake(
                                 localPath = canonPath(parentPath + "/" + *input.ref->input.getSourcePath());
                             }
 
-                            auto inputFlake = getFlake(state, localRef, lockFlags.useRegistries, flakeCache);
+                            auto inputFlake = getFlake(state, localRef, useRegistries, flakeCache);
 
                             /* Note: in case of an --override-input, we use
                                the *original* ref (input2.ref) for the
@@ -521,7 +529,7 @@ LockedFlake lockFlake(
 
                         else {
                             auto [sourceInfo, resolvedRef, lockedRef] = fetchOrSubstituteTree(
-                                state, *input.ref, lockFlags.useRegistries, flakeCache);
+                                state, *input.ref, useRegistries, flakeCache);
                             node->inputs.insert_or_assign(id,
                                 std::make_shared<LockedNode>(lockedRef, *input.ref, false));
                         }
@@ -594,8 +602,8 @@ LockedFlake lockFlake(
                         topRef.input.markChangedFile(
                             (topRef.subdir == "" ? "" : topRef.subdir + "/") + "flake.lock",
                             lockFlags.commitLockFile
-                            ? std::optional<std::string>(fmt("%s: %s\n\nFlake input changes:\n\n%s",
-                                    relPath, lockFileExists ? "Update" : "Add", diff))
+                            ? std::optional<std::string>(fmt("%s: %s\n\nFlake lock file changes:\n\n%s",
+                                    relPath, lockFileExists ? "Update" : "Add", filterANSIEscapes(diff, true)))
                             : std::nullopt);
 
                         /* Rewriting the lockfile changed the top-level
@@ -603,7 +611,7 @@ LockedFlake lockFlake(
                            also just clear the 'rev' field... */
                         auto prevLockedRef = flake.lockedRef;
                         FlakeCache dummyCache;
-                        flake = getFlake(state, topRef, lockFlags.useRegistries, dummyCache);
+                        flake = getFlake(state, topRef, useRegistries, dummyCache);
 
                         if (lockFlags.commitLockFile &&
                             flake.lockedRef.input.getRev() &&
@@ -673,7 +681,7 @@ static void prim_getFlake(EvalState & state, const Pos & pos, Value * * args, Va
         lockFlake(state, flakeRef,
             LockFlags {
                 .updateLockFile = false,
-                .useRegistries = !evalSettings.pureEval,
+                .useRegistries = !evalSettings.pureEval && !settings.useRegistries,
                 .allowMutable  = !evalSettings.pureEval,
             }),
         v);
